@@ -88,7 +88,7 @@ def plane_to_image(points, center):
     new_ys = [y * TRANS.C * TRANS.SIN / (TRANS.H * TRANS.TAN + TRANS.L + y) for y in ys]
     new_xs = [xs[i] * TRANS.C / (TRANS.H * TRANS.TAN + TRANS.L + ys[i]) for i in range(len(points))]
     # Center of the plain coordinate system in the center of the image:
-    new_xs = [x + center[0] for x in new_xs]
-    new_ys = [center[1] - y for y in new_ys]
+    new_xs = [int(x + center[0]) for x in new_xs]
+    new_ys = [int(center[1] - y) for y in new_ys]
 
     return list(zip(new_xs, new_ys))
