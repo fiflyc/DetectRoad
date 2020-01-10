@@ -1,11 +1,10 @@
 import numpy as np
 from sklearn.cluster import DBSCAN
-from coordinates import ROAD
 
 
-def clusterize(points):
-    max_dist = ROAD.WIDTH * 0.4
-    clusterize.dbscan = DBSCAN(eps=max_dist,
+def clusterize(points, radius):
+    # radius = ROAD.WIDTH * 0.4
+    clusterize.dbscan = DBSCAN(eps=radius,
                                min_samples=1,
                                metric='euclidean',
                                algorithm='kd_tree',
@@ -25,13 +24,3 @@ def unite_noise(clusters, noise_len=1):
     for label in clusters:
         result.append(new_labels[label])
     return result
-
-
-def update_labels(labels, clusters):
-    clusters = unite_noise(clusters)
-
-    p = 0
-    for i in range(len(labels)):
-        if labels[i] == 1:
-            labels[i] = clusters[p]
-            p += 1

@@ -1,8 +1,6 @@
 import numpy as np
 from numpy.linalg import norm
-from coordinates import ROAD, TAPE
-import cv2
-from coordinates import plane_to_image
+from coordinates import ROAD
 
 
 def broken_line(points):
@@ -21,9 +19,9 @@ def broken_line(points):
 
 
 def can_be_next(point, last, direction):
-    if norm(point - last) > ROAD.GAP + TAPE.MAX_DIAG:
-        return False
-    elif norm(point - last) < ROAD.GAP:
+    point = np.array(point)
+    last = np.array(last)
+    if norm(point - last) > ROAD.WIDTH * 0.5:
         return False
     elif len(direction) == 0:
         return True
@@ -42,7 +40,7 @@ def find_longest_path(current, points):
             if len(current) > 1:
                 direction = np.array(points[last]) - np.array(points[current[-2]])
 
-            if can_be_next(np.array(points[j]), np.array(points[last]), direction):
+            if can_be_next(points[j], points[last], direction):
                 path = find_longest_path(current + [j], points)
                 if len(longest) < len(path) + 1:
                     longest = [j] + path
@@ -50,35 +48,21 @@ def find_longest_path(current, points):
     return longest
 
 
-def extend_line(image, line, kd_tree, points, banned):
-    extend_line.call = 0
-    debug = cv2.VideoWriter('./output/debug_line' + str(extend_line.call) + ".mp4", cv2.VideoWriter_fourcc(*'mp4v'), 30, (640, 480))
-
-    left = find_longest_extension(image, debug, line[0], np.array(line[0]) - np.array(line[1]), kd_tree, points, banned)
+def extend_line(line, kd_tree, points, banned):
+    left = find_longest_extension(line[0], np.array(line[0]) - np.array(line[1]), kd_tree, points, banned)
     left.reverse()
     line = left + line
-    line = line + find_longest_extension(image, debug, line[-1], np.array(line[-1]) - np.array(line[-2]), kd_tree, points, banned)
+    line = line + find_longest_extension(line[-1], np.array(line[-1]) - np.array(line[-2]), kd_tree, points, banned)
     return line
 
 
-def find_longest_extension(pic, vid, start, direction, kd_tree, points, banned):
-    find_longest_extension.calls += 1
-    print(find_longest_extension.calls)
-    if find_longest_extension.calls > 2400:
-        vid.release()
-        exit("Max calls reached")
-
+def find_longest_extension(start, direction, kd_tree, points, banned):
     longest = []
-    qq = plane_to_image([start], (320, 240))[0]
+
     for i in kd_tree.query_radius(X=[start], r=ROAD.WIDTH * 0.5)[0]:
-        if points[i].tolist() not in banned and can_be_next(np.array(points[i]), np.array(start), direction):
-            pica = np.copy(pic)
-            pp = plane_to_image([points[i].tolist()], (320, 240))[0]
-            cv2.line(pica, pp, qq, (210, 195, 0), thickness=2)
-            cv2.circle(pica, qq, 1, color=(195, 0, 50), thickness=4)
-            cv2.circle(pica, pp, 1, color=(0, 190, 0), thickness=4)
-            vid.write(pica)
-            path = find_longest_extension(pica, vid, points[i].tolist(), np.array(points[i]) - np.array(start), kd_tree, points, banned + [points[i].tolist()])
+        if points[i].tolist() not in banned and can_be_next(points[i], start, direction):
+            path = find_longest_extension(points[i].tolist(), np.array(points[i]) - np.array(start), kd_tree, points,
+                                          banned + [points[i].tolist()])
             if len(longest) < len(path) + 1:
                 longest = [points[i].tolist()] + path
 
@@ -87,4 +71,56 @@ def find_longest_extension(pic, vid, start, direction, kd_tree, points, banned):
     return longest
 
 
-find_longest_extension.calls = 0
+def concatenate_lines(first, second):
+    if can_be_next(second[0], first[-1], np.array(first[-1]) - np.array(first[-2])) and \
+            can_be_next(first[-1], second[0], np.array(second[0]) - np.array(second[1])):
+        return first + second
+    elif can_be_next(second[-1], first[-1], np.array(first[-1]) - np.array(first[-2])) and \
+            can_be_next(first[-1], second[-1], np.array(second[-1]) - np.array(second[-2])):
+        second.reverse()
+        return first + second
+    elif can_be_next(first[0], second[-1], np.array(second[-1]) - np.array(second[-2])) and \
+            can_be_next(second[-1], first[0], np.array(first[0]) - np.array(first[1])):
+        return second + first
+    elif can_be_next(first[-1], second[-1], np.array(second[-1]) - np.array(second[-2])) and \
+            can_be_next(second[-1], first[-1], np.array(first[-1]) - np.array(first[-2])):
+        second.reverse()
+        return second + first
+    else:
+        return None
+
+
+def pair_up(lines):
+    result = []
+    for i in range(len(lines)):
+        was_united = False
+        for j in range(i + 1, len(lines)):
+            line = concatenate_lines(lines[i], lines[j])
+            if line is not None:
+                result.append(line)
+                was_united = True
+                break
+
+        if not was_united:
+            result.append(lines[i])
+
+    return result
+
+
+def unite_lines(lines):
+    current = pair_up(lines)
+    while len(current) < len(lines):
+        lines = current
+        current = pair_up(lines)
+    return current
+
+
+def line_score(line, wight, height):
+    B = 0
+    D = height
+    for point in line:
+        B += min(point[0], wight - point[0]) ** 2
+        D = min(D, height - point[1])
+    B /= len(line)
+
+    return B / D

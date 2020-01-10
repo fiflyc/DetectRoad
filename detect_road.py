@@ -5,9 +5,9 @@ import cv2
 import numpy as np
 from sklearn.neighbors import KDTree
 from detect_tapes import detect_tapes
-from coordinates import set_horizon, image_to_plane, plane_to_image
-from clusterization import clusterize, update_labels
-from lines import broken_line, extend_line
+from coordinates import ROAD, set_horizon, image_to_plane, plane_to_image
+from clusterization import clusterize, unite_noise
+from lines import broken_line, extend_line, unite_lines, line_score
 
 
 def test():
@@ -50,45 +50,63 @@ def modify_image(image, width, height):
 
     # Find tapes:
     tapes, labels = detect_tapes(image)
-    tapes_plane = image_to_plane(tapes, (int(width / 2), int(height / 2)))
     if len(tapes) == 0:
         return image
-    # Clusterize tapes which labels is 1:
-    clusters = clusterize([tapes_plane[i] for i in range(len(tapes_plane)) if labels[i] == 1])
-    update_labels(labels, clusters)
-    # Build broken line for each cluster:
-    lines_plane = []
-    banned = []
-    for c in np.unique(labels):
-        if c != -1:
-            group = [i for i in range(len(tapes)) if labels[i] == c]
-            line = broken_line([tapes_plane[i] for i in group])
-            banned += [list(tapes_plane[group[i]]) for i in line]
-            lines_plane.append([list(tapes_plane[group[i]]) for i in line])
-    # Extend broken lines with tapes which labels is -1:
-    noise = np.array([tapes_plane[i] for i in range(len(tapes_plane)) if labels[i] == -1])
-    kd_tree = KDTree(noise, 15)
-    image = cv2.cvtColor(image, cv2.COLOR_GRAY2BGR)
-    for i, point in enumerate(tapes):
-        cv2.circle(image, point, 1, color=(50, 0, 195), thickness=4)
-    for i in range(len(lines_plane)):
-        lines_plane[i] = extend_line(image, lines_plane[i], kd_tree, noise, banned)
+    noise = [tapes[i] for i in range(len(tapes)) if labels[i] == -1]
+    tapes = [tapes[i] for i in range(len(tapes)) if labels[i] == 1]
+    noise_plane = image_to_plane(noise, (int(width / 2), int(height / 2)))
+    tapes_plane = image_to_plane(tapes, (int(width / 2), int(height / 2)))
 
-    # image = cv2.cvtColor(image, cv2.COLOR_GRAY2BGR)
+    # Clusterize tapes:
+    tapes_clusters = clusterize(tapes_plane, ROAD.WIDTH * 0.5)
+    tapes_clusters = unite_noise(tapes_clusters)
+    noise += [tapes[i] for i in range(len(tapes)) if tapes_clusters == -1]
+    noise_plane += [tapes_plane[i] for i in range(len(tapes_plane)) if tapes_clusters == -1]
+    tapes = [tapes[i] for i in range(len(tapes)) if tapes_clusters != -1]
+    tapes_plane = [tapes_plane[i] for i in range(len(tapes_plane)) if tapes_clusters != -1]
+
+    # Remove groups of noise:
+    noise_clusters = clusterize(noise_plane, ROAD.GAP)
+    unite_noise(noise_clusters)
+    noise_updated = [noise_plane[i] for i in range(len(noise_plane)) if noise_clusters[i] == -1]
+    for c in range(max(noise_clusters)):
+        center = np.average([np.array(noise_plane[i]) for i in range(len(noise_plane)) if noise_clusters[i] == c], axis=0)
+        noise_updated.append(center)
+    noise_updated = [p for p in noise_updated if len(np.shape(p)) > 0]
+    noise_plane = noise_updated
+    noise = plane_to_image(noise_plane, (int(width / 2), int(height / 2)))
+
+    # Build broken line for each tapes cluster:
+    lines_plane = []
+    for c in np.unique(tapes_clusters):
+        if c != -1:
+            group = [i for i in range(len(tapes_plane)) if tapes_clusters[i] == c]
+            line = broken_line([tapes_plane[i] for i in group])
+            lines_plane.append([list(tapes_plane[group[i]]) for i in line])
+
+    # Extend broken lines with noise:
+    kd_tree = KDTree(np.array(noise_plane), 15)
+    banned = []
+    for i in range(len(lines_plane)):
+        lines_plane[i] = extend_line(lines_plane[i], kd_tree, noise_plane, banned)
+
+    # Unite and filter lines:
+    lines_plane = unite_lines(lines_plane)
+
+    image = cv2.cvtColor(image, cv2.COLOR_GRAY2BGR)
 
     for line in lines_plane:
-        line = plane_to_image(line, (int(width / 2), int(height / 2)))
-        for p, q in zip(line[:-1], line[1:]):
+        line_img = plane_to_image(line, (int(width / 2), int(height / 2)))
+        for p, q in zip(line_img[:-1], line_img[1:]):
             cv2.line(image, p, q, (210, 195, 0), thickness=2)
             cv2.circle(image, p, 1, color=(195, 0, 50), thickness=4)
             cv2.circle(image, q, 1, color=(195, 0, 50), thickness=4)
+        cv2.putText(image, str(line_score(line_img, width, height))[:4], line_img[0], cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 190, 0))
 
-    for i, point in enumerate(tapes):
-        if labels[i] == -1:
-            cv2.circle(image, point, 1, color=(50, 0, 195), thickness=4)
-        else:
-            # cv2.circle(image, point, 1, color=(195, 0, 50), thickness=4)
-            cv2.putText(image, str(tapes_plane[i][0])[:4] + ", " + str(tapes_plane[i][1])[:4], point, cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 190, 0))
+    for point in noise:
+        cv2.circle(image, point, 1, color=(50, 0, 195), thickness=4)
+    for point in tapes:
+        cv2.circle(image, point, 1, color=(195, 0, 50), thickness=4)
 
     return image
 
