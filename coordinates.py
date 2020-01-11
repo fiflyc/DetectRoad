@@ -8,7 +8,7 @@ class ROAD:
 
     WIDTH = 21.75   # 21.75cm,  width
     GAP = 2.5       # 2.5cm,    gap in the yellow dash line
-    MIN_COS = 0.8   # cos of max angle between two near tapes
+    MIN_COS = 0.75   # cos of max angle between two near tapes
 
 
 class TAPE:
@@ -18,8 +18,8 @@ class TAPE:
     Width is in [MIN_WIDTH, MAX_WIDTH]. Diagonal is in [MIN_DIAG, MAX_DIAG].
     """
 
-    MAX_WIDTH = 2.6  # 2.4cm
-    MIN_WIDTH = 0.8  # 1.0cm
+    MAX_WIDTH = 2.6  # 2.6cm
+    MIN_WIDTH = 0.8  # 0.8cm
     MAX_DIAG = 9.0   # 9.0cm
     MIN_DIAG = 4.0   # 4.0cm
 
@@ -61,7 +61,7 @@ def image_to_plane(points, center):
     Transforms coordinates of points from image coordinate system to plane. If point is in the horizon, skips it.
     :param points: coordinates to transform.
     :param center: center of the image.
-    :return: plane coordinates.
+    :return: plane coordinates as numpy array.
     """
 
     xs, ys = zip(*points)
@@ -72,7 +72,7 @@ def image_to_plane(points, center):
     new_ys = [y * (TRANS.H * TRANS.TAN + TRANS.L) / (TRANS.C * TRANS.SIN - y) for y in ys]
     new_xs = [xs[i] * (TRANS.H * TRANS.TAN + TRANS.L + new_ys[i]) / TRANS.C for i in range(len(points))]
 
-    return list(zip(new_xs, new_ys))
+    return np.array(list(zip(new_xs, new_ys)))
 
 
 def plane_to_image(points, center):
@@ -80,7 +80,7 @@ def plane_to_image(points, center):
     Transforms coordinates of points from plane coordinate system to image.
     :param points: coordinates to transform.
     :param center: center of the image.
-    :return: image coordinates.
+    :return: image coordinates as numpy array.
     """
 
     xs, ys = zip(*points)
@@ -91,4 +91,4 @@ def plane_to_image(points, center):
     new_xs = [int(x + center[0]) for x in new_xs]
     new_ys = [int(center[1] - y) for y in new_ys]
 
-    return list(zip(new_xs, new_ys))
+    return np.array(list(zip(new_xs, new_ys)))
