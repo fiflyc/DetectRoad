@@ -26,16 +26,6 @@ def detect_line(image):
     noise_plane = image_to_plane(noise, (int(width / 2), int(height / 2)))
     tapes_plane = image_to_plane(tapes, (int(width / 2), int(height / 2)))
 
-    # Clusterize tapes:
-    tapes_clusters = clusterize(tapes_plane, ROAD.WIDTH * 0.5)
-    tapes_clusters = unite_noise(tapes_clusters)
-
-    np.append(noise, [tapes[i] for i in range(len(tapes)) if tapes_clusters == -1])
-    np.append(noise_plane, [tapes_plane[i] for i in range(len(tapes_plane)) if tapes_clusters == -1])
-
-    tapes = np.array([tapes[i] for i in range(len(tapes)) if tapes_clusters != -1])
-    tapes_plane = np.array([tapes_plane[i] for i in range(len(tapes_plane)) if tapes_clusters != -1])
-
     # Remove groups of noise:
     noise_clusters = clusterize(noise_plane, ROAD.GAP)
     unite_noise(noise_clusters)
@@ -49,6 +39,10 @@ def detect_line(image):
     noise_plane = noise_updated
     noise = plane_to_image(noise_plane, (int(width / 2), int(height / 2)))
 
+    # Clusterize tapes:
+    tapes_clusters = clusterize(tapes_plane, ROAD.WIDTH * 0.5)
+    tapes_clusters = unite_noise(tapes_clusters)
+
     # Build broken line for each tapes cluster:
     lines_plane = []
     classes = np.unique(tapes_clusters)
@@ -60,6 +54,13 @@ def detect_line(image):
 
     if len(lines_plane) == 0:
         return None
+
+    # Bad tapes (one point in it's own cluster) now noise:
+    noise = np.array(noise.tolist() + [tapes[i] for i in range(len(tapes)) if tapes_clusters[i] == -1])
+    noise_plane = np.array(noise_plane.tolist() + [tapes_plane[i] for i in range(len(tapes_plane)) if tapes_clusters[i] == -1])
+
+    tapes = np.array([tapes[i] for i in range(len(tapes)) if tapes_clusters[i] != -1])
+    tapes_plane = np.array([tapes_plane[i] for i in range(len(tapes_plane)) if tapes_clusters[i] != -1])
 
     # Extend broken lines with noise:
     kd_tree = KDTree(noise_plane, 15)
